@@ -1,4 +1,4 @@
-.PHONY: help setup run docker-up docker-down logs clean
+.PHONY: help setup run docker-up docker-down update logs clean
 
 help:
 	@echo "Available targets:"
@@ -6,6 +6,7 @@ help:
 	@echo "  make run        - Run bot locally"
 	@echo "  make docker-up  - Build and start with Docker Compose"
 	@echo "  make docker-down - Stop Docker Compose services"
+	@echo "  make update     - Rebuild the Docker image and restart services"
 	@echo "  make logs       - Follow Docker Compose logs"
 	@echo "  make clean      - Remove local runtime files"
 
@@ -20,6 +21,9 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+update:
+	docker compose up --build -d --force-recreate
 
 logs:
 	docker compose logs -f

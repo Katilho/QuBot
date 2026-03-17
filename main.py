@@ -83,6 +83,7 @@ def get_user(db, user_id: str, user_name: str):
             "bj_losses": 0,
             "bj_draws": 0,
             "begs": 0,
+            "last_beg_time": None,
         }
     else:
         db[user_id]["name"] = user_name
@@ -674,13 +675,57 @@ async def on_message(message: discord.Message):
 
     # ── !beg ──────────────────────────────────────────────────────────────────
     elif msg == "!beg":
+        import time
+
+        if user["coins"] > 0:
+            await message.channel.send(
+                f"🚫 **{message.author.mention}** you can only beg when you're broke! You have {user['coins']} coins."
+            )
+            return
+
+        current_time = time.time()
+        beg_cooldown = 3600
+        max_begs_before_shame = 5
+
+        if user.get("last_beg_time"):
+            time_since_last_beg = current_time - user["last_beg_time"]
+            if time_since_last_beg < beg_cooldown:
+                remaining = int(beg_cooldown - time_since_last_beg)
+                minutes = remaining // 60
+                seconds = remaining % 60
+                await message.channel.send(
+                    f"🚫 **{message.author.mention}** begging has a cooldown! Wait {minutes}m {seconds}s before begging again."
+                )
+                return
+
+        user["last_beg_time"] = current_time
         earned = random.randint(1, 100)
         user["coins"] += earned
         user["begs"] += 1
+
+        shame_messages = [
+            f"🙏 **{message.author.mention}** pediu e recebeu **{earned}** moedas. Total de pedidos: {user['begs']}. Já pensaste em fazer um Patreon?",
+            f"🙏 **{message.author.mention}** pediu **{earned}** moedas ({user['begs']} vezes). O teu futuro está a sofrer.",
+            f"🙏 **{message.author.mention}** recebeu **{earned}** moedas a pedir. Com {user['begs']} pedidos, estás a fazer speedrun da pobreza.",
+            f"🙏 **{message.author.mention}** conseguiu **{earned}** moedas (tentativa #{user['begs']}). Até o algoritmo sente vergonha alheia.",
+            f"🙏 **{message.author.mention}** pediu de novo por **{earned}** moedas. Até o Benfica tem mais estabilidade financeira.",
+            f"🙏 **{message.author.mention}** pediu de novo por **{earned}** moedas. O teu histórico bancário é agora uma telenovela.",
+            f"🙏 **{message.author.mention}** conseguiu **{earned}** moedas. Com {user['begs']} pedidos, alcançaste o estatuto de whale... mas ao contrário.",
+        ]
+
+        if user["begs"] >= max_begs_before_shame:
+            shame_messages.extend(
+                [
+                    f"🚨 **{message.author.mention}** pediu {user['begs']} vezes. O teu LinkedIn devia dizer 'Entusiasta de Criptomoedas.'",
+                    f"⚠️ **{message.author.mention}** ({user['begs']} pedidos) está a fazer speedrun do fundo do poço. Empenho impressionante.",
+                    f"📢 **{message.author.mention}** é agora um Pedidor Nível {user['begs']}. Próximo desbloqueio: respeitar-te a ti mesmo.",
+                    f"🔔 **{message.author.mention}** ({user['begs']} pedidos) transcendeu a pobreza numa marca pessoal.",
+                    f"💀 **{message.author.mention}** pediu {user['begs']} vezes. Neste ponto, não é raiva—é documentar a tua história de origem.",
+                ]
+            )
+
         save_db(db)
-        await message.channel.send(
-            f"🙏 **{message.author.mention}** begged and received **{earned}** coins. Shame on you."
-        )
+        await message.channel.send(random.choice(shame_messages))
 
     # ── !coinflip / !cf ───────────────────────────────────────────────────────
     elif msg.startswith(("!coinflip", "!cf")):
