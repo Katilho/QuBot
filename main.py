@@ -12,10 +12,11 @@ load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("BOT_TOKEN")
 PREFIX = "!"
-DB_FILE = "db.json"  # simple JSON "database"
+DATA_DIR = "data"
+DB_FILE = os.path.join(DATA_DIR, "db.json")
 EURO_TICKET_COST = 10
 ADMIN_USERNAME = "Katilho"
-LOG_FILE = "discord.log"
+LOG_FILE = os.path.join(DATA_DIR, "discord.log")
 LOG_MAX_BYTES = 32 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
 
