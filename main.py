@@ -678,12 +678,6 @@ async def on_message(message: discord.Message):
     elif msg == "!beg":
         import time
 
-        if user["coins"] > 0:
-            await message.channel.send(
-                f"🚫 **{message.author.mention}** you can only beg when you're broke! You have {user['coins']} coins."
-            )
-            return
-
         current_time = time.time()
         beg_cooldown = 3600
         max_begs_before_shame = 5
@@ -700,7 +694,7 @@ async def on_message(message: discord.Message):
                 return
 
         user["last_beg_time"] = current_time
-        earned = random.randint(1, 100)
+        earned = random.randint(1, 25)
         user["coins"] += earned
         user["begs"] += 1
 
