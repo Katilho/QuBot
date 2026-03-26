@@ -85,9 +85,15 @@ def get_user(db, user_id: str, user_name: str):
             "bj_draws": 0,
             "begs": 0,
             "last_beg_time": None,
+            "loan_amount": 0,
+            "loan_due_time": None,
         }
     else:
         db[user_id]["name"] = user_name
+        if "loan_amount" not in db[user_id]:
+            db[user_id]["loan_amount"] = 0
+        if "loan_due_time" not in db[user_id]:
+            db[user_id]["loan_due_time"] = None
     return db[user_id]
 
 
@@ -679,8 +685,8 @@ async def on_message(message: discord.Message):
         import time
 
         current_time = time.time()
-        beg_cooldown = 3600
-        max_begs_before_shame = 5
+        beg_cooldown = 1800
+        max_begs_before_shame = 10
 
         if user.get("last_beg_time"):
             time_since_last_beg = current_time - user["last_beg_time"]
