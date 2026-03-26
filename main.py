@@ -94,6 +94,8 @@ def get_user(db, user_id: str, user_name: str):
             db[user_id]["loan_amount"] = 0
         if "loan_due_time" not in db[user_id]:
             db[user_id]["loan_due_time"] = None
+        if "last_subsidy_time" not in db[user_id]:
+            db[user_id]["last_subsidy_time"] = None
     return db[user_id]
 
 
@@ -582,6 +584,26 @@ async def on_message(message: discord.Message):
             value="Lose your shame and beg for money.",
             inline=False,
         )
+        embed.add_field(
+            name="!loan <amount>",
+            value="Take out a loan (max 5x your coins, 10% interest, 1h cooldown).",
+            inline=False,
+        )
+        embed.add_field(
+            name="!repay [amount]",
+            value="Repay your loan. Repays full amount if no amount specified.",
+            inline=False,
+        )
+        embed.add_field(
+            name="!loanstatus",
+            value="Check your current loan status.",
+            inline=False,
+        )
+        embed.add_field(
+            name="!subsidy",
+            value="Claim 500 coins daily if you have less than 1000 coins.",
+            inline=False,
+        )
         await message.channel.send(embed=embed)
 
     # ── !money ───────────────────────────────────────────────────────────────
@@ -728,6 +750,46 @@ async def on_message(message: discord.Message):
         save_db(db)
         await message.channel.send(random.choice(shame_messages))
 
+    # ── !subsidy ──────────────────────────────────────────────────────────────
+    elif msg == "!subsidy":
+        import time
+
+        current_time = time.time()
+        subsidy_cooldown = 86400
+        subsidy_amount = 500
+        max_coins_for_subsidy = 1000
+
+        if user["coins"] >= max_coins_for_subsidy:
+            await message.channel.send(
+                f"🚫 **{message.author.mention}** You can only receive the subsidy if you have less than {max_coins_for_subsidy} coins. "
+                f"You currently have **{user['coins']}** coins."
+            )
+            return
+
+        if user.get("last_subsidy_time"):
+            time_since_subsidy = current_time - user["last_subsidy_time"]
+            if time_since_subsidy < subsidy_cooldown:
+                remaining = int(subsidy_cooldown - time_since_subsidy)
+                hours = remaining // 3600
+                minutes = (remaining % 3600) // 60
+                await message.channel.send(
+                    f"🚫 **{message.author.mention}** The daily subsidy is on cooldown! Wait {hours}h {minutes}m before claiming again."
+                )
+                return
+
+        user["last_subsidy_time"] = current_time
+        user["coins"] += subsidy_amount
+        save_db(db)
+
+        subsidy_messages = [
+            f"💼 **{message.author.mention}** received a daily subsidy of **{subsidy_amount}** coins! You now have **{user['coins']}** coins. Get back on your feet!",
+            f"🎁 **{message.author.mention}** claimed the daily subsidy! **+{subsidy_amount}** coins added. Balance: **{user['coins']}** coins.",
+            f"🤝 **{message.author.mention}** got a helping hand! **+{subsidy_amount}** coins from the daily subsidy. Total: **{user['coins']}** coins.",
+            f"💰 **{message.author.mention}** picked up **{subsidy_amount}** coins from the community fund. You now have **{user['coins']}** coins!",
+        ]
+
+        await message.channel.send(random.choice(subsidy_messages))
+
     # ── !coinflip / !cf ───────────────────────────────────────────────────────
     elif msg.startswith(("!coinflip", "!cf")):
         if len(args) != 3:
@@ -832,6 +894,132 @@ async def on_message(message: discord.Message):
             await message.channel.send("No active game.")
             return
         await settle_blackjack(message.channel, message.channel.id, uid)
+
+    # ── !loan ─────────────────────────────────────────────────────────────────
+    elif command == "!loan":
+        import time
+
+        if len(args) != 2:
+            await message.channel.send("Usage: `!loan <amount>`")
+            return
+
+        try:
+            loan_amount = int(args[1])
+        except ValueError:
+            await message.channel.send("Amount must be a number.")
+            return
+
+        if loan_amount <= 0:
+            await message.channel.send("Loan amount must be positive.")
+            return
+
+        current_time = time.time()
+        loan_cooldown = 3600
+        max_loan_multiplier = 5
+        interest_rate = 0.10
+
+        if user.get("loan_amount", 0) > 0:
+            if user.get("loan_due_time") and current_time < user["loan_due_time"]:
+                time_remaining = int(user["loan_due_time"] - current_time)
+                minutes = time_remaining // 60
+                await message.channel.send(
+                    f"🚫 **{message.author.mention}** You still have an outstanding loan of **{user['loan_amount']}** coins. "
+                    f"Please repay it first. Time remaining: {minutes}m."
+                )
+                return
+
+        max_loan = max(user["coins"] * max_loan_multiplier, 100)
+        if loan_amount > max_loan:
+            await message.channel.send(
+                f"🚫 **{message.author.mention}** Loan amount too high. Maximum loan: **{max_loan}** coins."
+            )
+            return
+
+        total_with_loan = user["coins"] + loan_amount
+        if total_with_loan > 10000000:
+            await message.channel.send(
+                f"🚫 **{message.author.mention}** You cannot have more than 10,000,000 coins total."
+            )
+            return
+
+        user["coins"] += loan_amount
+        user["loan_amount"] = int(loan_amount * (1 + interest_rate))
+        user["loan_due_time"] = current_time + loan_cooldown
+
+        save_db(db)
+        await message.channel.send(
+            f"💰 **{message.author.mention}** took a loan of **{loan_amount}** coins.\n"
+            f"📉 You must repay **{user['loan_amount']}** coins within 1 hour (10% interest applied).\n"
+            f"💵 You now have **{user['coins']}** coins."
+        )
+
+    # ── !repay ────────────────────────────────────────────────────────────────
+    elif command == "!repay":
+        if user.get("loan_amount", 0) <= 0:
+            await message.channel.send(
+                f"✅ **{message.author.mention}** You don't have any outstanding loans."
+            )
+            return
+
+        repay_amount = user["loan_amount"]
+        if len(args) == 2:
+            try:
+                repay_amount = int(args[1])
+            except ValueError:
+                await message.channel.send("Amount must be a number.")
+                return
+
+            if repay_amount <= 0:
+                await message.channel.send("Amount must be positive.")
+                return
+            if repay_amount > user["loan_amount"]:
+                repay_amount = user["loan_amount"]
+
+        if user["coins"] < repay_amount:
+            await message.channel.send(
+                f"🚫 **{message.author.mention}** You don't have enough coins. You need **{repay_amount}** coins."
+            )
+            return
+
+        user["coins"] -= repay_amount
+        user["loan_amount"] -= repay_amount
+
+        if user["loan_amount"] <= 0:
+            user["loan_amount"] = 0
+            user["loan_due_time"] = None
+            save_db(db)
+            await message.channel.send(
+                f"✅ **{message.author.mention}** Loan fully repaid! You now have **{user['coins']}** coins."
+            )
+        else:
+            save_db(db)
+            await message.channel.send(
+                f"💳 **{message.author.mention}** repaid **{repay_amount}** coins. "
+                f"Remaining loan: **{user['loan_amount']}** coins."
+            )
+
+    # ── !loanstatus ───────────────────────────────────────────────────────────
+    elif msg == "!loanstatus":
+        if user.get("loan_amount", 0) > 0:
+            import time
+
+            current_time = time.time()
+            time_remaining = 0
+            if user.get("loan_due_time"):
+                time_remaining = max(0, int(user["loan_due_time"] - current_time))
+                minutes = time_remaining // 60
+                seconds = time_remaining % 60
+
+            await message.channel.send(
+                f"📊 **{message.author.mention}** Loan Status:\n"
+                f"💸 Outstanding: **{user['loan_amount']}** coins\n"
+                f"⏰ Time remaining: {minutes}m {seconds}s\n"
+                f"💵 Your balance: **{user['coins']}** coins"
+            )
+        else:
+            await message.channel.send(
+                f"✅ **{message.author.mention}** You have no outstanding loans."
+            )
 
     # ── !euromilhoes / !euro ──────────────────────────────────────────────────
     elif msg.startswith(("!euromilhoes", "!euro")):
